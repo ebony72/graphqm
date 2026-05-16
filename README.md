@@ -58,8 +58,7 @@ CI (`.github/workflows/ci.yml`) runs these on every push and PR plus a
 [`scripts/compare.py`](scripts/compare.py) runs the graphqm pipeline
 (partition + `connect_two` routing) and Qiskit's upstream SABRE
 side-by-side on a fixed benchmark suite over the q20 (IBM Tokyo) coupling,
-reporting SWAP counts for each. Requires Qiskit 0.33 (graphqm uses
-private APIs that disappeared in newer Qiskit).
+reporting SWAP counts for each.
 
 ```bash
 python scripts/compare.py
@@ -67,4 +66,7 @@ python scripts/compare.py
 
 ## Dependencies
 
-Pinned to Qiskit 0.33; some files use private APIs (`Qubit._index`, `DAGOpNode` constructor) that may break on newer versions.
+Tested on Qiskit 2.3.1. Should work on any Qiskit ≥ 1.0 — uses a handful of
+private attributes (`Qubit._index`, `Layout._v2p`) which the Qiskit team has
+kept stable across the 1.x/2.x line; if a future release removes them, the
+mappings are `dag.find_bit(q).index` and `layout.get_virtual_bits()` respectively.

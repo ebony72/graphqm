@@ -5,9 +5,8 @@ from qiskit import QuantumCircuit, QuantumRegister
 from qiskit.dagcircuit import DAGCircuit, DAGOpNode, DAGInNode, DAGOutNode
 from qiskit.converters import circuit_to_dag, dag_to_circuit
 from qiskit.transpiler.layout import Layout
-from qiskit.circuit.quantumregister import Qubit
+from qiskit.circuit import Qubit
 from qiskit.visualization import dag_drawer
-from qiskit.qasm import Qasm
 
 import matplotlib.pyplot as plt
 import networkx as nx

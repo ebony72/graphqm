@@ -11,7 +11,7 @@ The graphqm pipeline mirrors `dac_router_all.ipynb`:
     the current mapping into one valid for that section.
 
 Requirements:
-    - Qiskit 0.33 (graphqm modules use private APIs like `Qubit._index`).
+    - Qiskit >= 1.0 (tested on 2.3.1).
     - graphqm repo on PYTHONPATH (handled if you run from the repo root).
     - Benchmark QASM files at $GRAPHQM_BENCH
       (default: `../bench/qiskit_circuit_benchmark/`).

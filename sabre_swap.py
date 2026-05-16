@@ -14,7 +14,7 @@ from copy import copy, deepcopy
 import numpy as np
 
 from qiskit.circuit.library.standard_gates import SwapGate, CXGate
-from qiskit.circuit.quantumregister import Qubit
+from qiskit.circuit import Qubit
 from qiskit.dagcircuit import DAGOpNode
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.exceptions import TranspilerError
@@ -80,7 +80,7 @@ class SabreSwap(TransformationPass):
 
         mapped_dag = None
         if not self.fake_run:
-            mapped_dag = dag._copy_circuit_metadata()
+            mapped_dag = dag.copy_empty_like()
 
         canonical_register = dag.qregs["q"]
         current_layout = Layout.generate_trivial_layout(canonical_register)
