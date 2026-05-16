@@ -18,7 +18,7 @@ class Vf:
        # initial parameters
        self.graph = graph
        self.subgraph = subgraph
-       self.curMap = {} #we can also start with a partial map
+       self.curMap = {} # we can also start with a partial map
        
        # terminate the search earlier when time limit is reached
        self.start = time.time()
@@ -30,6 +30,15 @@ class Vf:
        # self.last_bestMap = None
        self.upperbound = upperbound
        # self.result = []
+
+       # precompute immutable graph data for speed
+       self._sub_nodes = list(self.subgraph.nodes())
+       self._graph_nodes = list(self.graph.nodes())
+       self._sub_deg = {v: self.subgraph.degree(v) for v in self._sub_nodes}
+       self._graph_deg = {v: self.graph.degree(v) for v in self._graph_nodes}
+       self._sub_neighbors = {v: list(self.subgraph.neighbors(v)) for v in self._sub_nodes}
+       self._graph_neighbors = {v: list(self.graph.neighbors(v)) for v in self._graph_nodes}
+       self._sub_maxdeg = max(self._sub_deg.values()) if self._sub_deg else 0
   
     def dfsMatch(self, S): 
         """ S is the result to return. 
@@ -60,9 +69,11 @@ class Vf:
             # print('__'*len(self.curMap), 'End dfsMatch - I!', self.curMap, 'This branch failed!')
             return S
         
+        mapped_sub = set(self.curMap.keys())
+        mapped_g = set(self.curMap.values())
         for key in self.curMap:
-            deg1 = outdegree(key, self.subgraph, self.curMap.keys()) 
-            deg2 = outdegree(self.curMap[key], self.graph, self.curMap.values())
+            deg1 = outdegree_cached(key, self._sub_neighbors, mapped_sub)
+            deg2 = outdegree_cached(self.curMap[key], self._graph_neighbors, mapped_g)
 
             if deg1 >  deg2:
                 # print(deg1, deg2)
@@ -182,8 +193,8 @@ class Vf:
         if not self.curMap:
             return True     
         
-        vNeighbor = list(nx.all_neighbors(self.subgraph, v))
-        uNeighbor = list(nx.all_neighbors(self.graph, u))
+        vNeighbor = self._sub_neighbors[v]
+        uNeighbor = self._graph_neighbors[u]
                 
         vPre, vSucc = preSucc(vNeighbor, self.curMap.keys())
         uPre, uSucc = preSucc(uNeighbor, self.curMap.values())
@@ -197,8 +208,10 @@ class Vf:
                 return False
         
         ''' v cannot have more successors in curMap than u does'''
-        len1 = len(set(vNeighbor) & set(subMNeighbor)) #subMNeighborhood
-        len2 = len(set(uNeighbor) & set(gMNeighbor))
+        subMNeighbor_set = set(subMNeighbor)
+        gMNeighbor_set = set(gMNeighbor)
+        len1 = len(set(vNeighbor) & subMNeighbor_set) # subMNeighborhood
+        len2 = len(set(uNeighbor) & gMNeighbor_set)
 
         if len1 > len2:
             return False
@@ -206,7 +219,7 @@ class Vf:
         
         
     def is_complete(self):
-        if len(self.curMap) == len(nx.nodes(self.subgraph)):
+        if len(self.curMap) == len(self._sub_nodes):
             return True
         return False
 
@@ -215,8 +228,8 @@ class Vf:
         
         # print('u', self.curMap)
         # print('me', self.preMap)
-        subMNeighbor = getNeiborhood(self.subgraph, self.curMap.keys())
-        gMNeighbor = getNeiborhood(self.graph, self.curMap.values()) # unmapped neighbours in self.graph
+        subMNeighbor = getNeiborhood_cached(self._sub_neighbors, self.curMap.keys())
+        gMNeighbor = getNeiborhood_cached(self._graph_neighbors, self.curMap.values()) # unmapped neighbours in self.graph
         
         """ Select the next to-be-mapped node in self.subgraph and candidate nodes in self.graph. """ 
         X = subMNeighbor[:]
@@ -228,13 +241,13 @@ class Vf:
             if nx.is_connected(self.subgraph) and len(self.curMap) > 0: 
                 raise Exception ('The subgraph is disconnected!')
 
-            X = list(set(nx.nodes(self.subgraph)) - set(self.curMap.keys()))     
+            X = list(set(self._sub_nodes) - set(self.curMap.keys()))
             
             subg_temp = self.subgraph.subgraph(X)
             # X = max(nx.connected_components(subg_temp), key=len)
             X = min(nx.connected_components(subg_temp), key=len) #sl@230531
             
-            gNMNeighbor = list(set(nx.nodes(self.graph)) - set(self.curMap.values()))
+            gNMNeighbor = list(set(self._graph_nodes) - set(self.curMap.values()))
 
         # print(X, gNMNeighbor)
 
@@ -244,7 +257,7 @@ class Vf:
         
         '''Rank the unmapped neighbors by their degrees'''    
         # max_deg = max([nx.degree(self.subgraph, v) for v in X])
-        max_deg = max([self._conn(v) for v in X])
+        max_deg = max(self._conn(v) for v in X)
         
  
         '''Select the node with the largest degree!'''
@@ -252,17 +265,17 @@ class Vf:
         nxt_vtx = [v for v in X if self._conn(v) ==  max_deg][0] #sl the next self.subgraph node to be mapped 
 
         '''Remove those self.graph neighbours which cannot match the suggraph candidate node''' 
-        gNMNeighbor = [ t for t in gNMNeighbor if\
-                       nx.degree(self.subgraph, nxt_vtx) <= nx.degree(self.graph,t)]
+        nxt_deg = self._sub_deg[nxt_vtx]
+        gNMNeighbor = [t for t in gNMNeighbor if nxt_deg <= self._graph_deg[t]]
             
         """ Rank nonmapped neighbours by distance to previous mapped node """
         if self.preMap:
-            gNMN_deg = list([nx.shortest_path_length(self.graph, self.preMap[nxt_vtx], v), v] for v in gNMNeighbor)
+            gNMN_deg = [[nx.shortest_path_length(self.graph, self.preMap[nxt_vtx], v), v] for v in gNMNeighbor]
         else:
-            gNMN_deg = list([nx.degree(self.graph,v), v] for v in gNMNeighbor)
+            gNMN_deg = [[self._graph_deg[v], v] for v in gNMNeighbor]
             
-            gNMN_deg.sort(key=lambda t: t[0])
-            gNMNeighbor = list(t[1] for t in gNMN_deg)
+        gNMN_deg.sort(key=lambda t: t[0])
+        gNMNeighbor = [t[1] for t in gNMN_deg]
         return nxt_vtx, subMNeighbor, gMNeighbor, gNMNeighbor
     
     def mapdist(self):
@@ -274,8 +287,8 @@ class Vf:
         return distance
 
     def _conn(self, v):
-        return self.subgraph.degree(v) / max([self.subgraph.degree(u) for u in self.subgraph.nodes() ]) \
-                    + len(set(self.subgraph.neighbors(v)).intersection(set(self.curMap.keys())))
+        return self._sub_deg[v] / self._sub_maxdeg \
+                    + len(set(self._sub_neighbors[v]).intersection(set(self.curMap.keys())))
 #sl divide the neighborhood of a vertex into two disjoint parts: pre (in map) and succ (not in map)
 def preSucc(Neighborhood, mapped_list):
     #vertexNeighbor and mapped_list can be empty
@@ -301,4 +314,13 @@ def getNeiborhood(g, mapped_list):
 
 def outdegree(v, g, mapped_list):
     return len([q for q in nx.all_neighbors(g,v) if q not in mapped_list])
+
+def getNeiborhood_cached(neighbors_map, mapped_list):
+    """Get non-mapped neighbors using a precomputed neighbor map."""
+    mapped_set = set(mapped_list)
+    Neighborhood = [q for x in mapped_set for q in neighbors_map[x]]
+    return list(set(Neighborhood) - mapped_set)
+
+def outdegree_cached(v, neighbors_map, mapped_set):
+    return sum(1 for q in neighbors_map[v] if q not in mapped_set)
     
