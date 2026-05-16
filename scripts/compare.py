@@ -30,7 +30,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-CIRCUIT_TIMEOUT_S = 300  # per-circuit wall clock for run_graphqm; 0 disables
+CIRCUIT_TIMEOUT_S = 300     # per-circuit wall clock for run_graphqm; 0 disables
+TRANSITION_TIMEOUT_S = 30   # per-transition budget; iterative_dfs aborts past this
 
 
 class CircuitTimeout(Exception):
@@ -52,6 +53,8 @@ from qiskit.transpiler.passes.layout.full_ancilla_allocation import FullAncillaA
 
 from qiskit.transpiler.passes.routing.algorithms.token_swapper import ApproximateTokenSwapper
 
+import networkx as _nx
+
 import ag
 from config import BENCH_PATH
 from connect_two import get_rxgraph, iterative_dfs
@@ -62,6 +65,7 @@ from dac_part import (
     partition,
     remove_1q_and_consecutive_2q_gates_in_circuit,
 )
+from vfsexp import Vf
 
 
 CIRCUITS = [
@@ -136,15 +140,33 @@ def _map_completion_all(tau, dag, AG):
     return tau
 
 
-def _ats_fallback_route(cur_map, sec_graph, AG):
-    """Route a section transition via ApproximateTokenSwapper when iterative_dfs fails.
-
-    Finds any valid embedding of the section's interaction graph and uses ATS to
-    compute the SWAP sequence taking cur_map to that target. Returns
-    ``(swap_count, new_cur_map)``.
+def _closest_embedding(sec_graph, AG, cur_map, stop_s=10):
+    """Find the embedding of `sec_graph` into `AG` whose mapdist to `cur_map` is
+    minimal (Vf.dfsMatchBest with preMap=cur_map). Bootstraps the
+    branch-and-bound with mapdist of any embedding so dfsMatchBest is bounded
+    in time. Returns the embedding dict, or None if no embedding exists.
     """
-    ok, target_map = is_embeddable(sec_graph, AG, 30)
+    ok, any_emb = is_embeddable(sec_graph, AG, max(2, stop_s // 2))
     if not ok:
+        return None
+    bootstrap_bound = sum(
+        _nx.shortest_path_length(AG, cur_map[t], any_emb[t])
+        for t in any_emb if t in cur_map
+    )
+    vf = Vf(sec_graph, AG, {}, stop=stop_s, preMap=cur_map, upperbound=bootstrap_bound + 1)
+    best = vf.dfsMatchBest({})
+    if best and len(best) == len(list(sec_graph.nodes())):
+        return best
+    return any_emb
+
+
+def _ats_fallback_route(cur_map, sec_graph, AG):
+    """Route a section transition via ApproximateTokenSwapper when iterative_dfs
+    fails. Picks the embedding of `sec_graph` in `AG` closest to `cur_map` so
+    the ATS permutation is short. Returns ``(swap_count, new_cur_map)``.
+    """
+    target_map = _closest_embedding(sec_graph, AG, cur_map, stop_s=15)
+    if target_map is None:
         raise RuntimeError("section IG not embeddable into AG")
 
     # Build a full permutation over AG nodes from cur_map to target_map
@@ -215,7 +237,7 @@ def run_graphqm(qc, AG, use_ats_fallback=True):
             for (u, v) in sec_graph.edges()
             if u in cur_map and v in cur_map
         ]
-        action = iterative_dfs(map_id, constraints, AG)
+        action = iterative_dfs(map_id, constraints, AG, max_seconds=TRANSITION_TIMEOUT_S)
         if action is None:
             if not use_ats_fallback:
                 raise RuntimeError(f"routing failed at section transition {i}")

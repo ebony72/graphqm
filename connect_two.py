@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import rustworkx as rx
 
-import copy, random
+import copy, random, time
 
 
 def get_reverse_mapping(map1):
@@ -184,13 +184,13 @@ def random_opt_local(tau, constraints, AG):
     return action
 
 """An iterative depth-first search strategy"""
-def dfs(depth,tau,constraints,AG):
+def dfs(depth, tau, constraints, AG, deadline=None):
+    if deadline is not None and time.monotonic() > deadline:
+        return False, []
     preval = constraint_satisfaction_degree(tau, constraints, AG)
     if preval == 0:
-        #print(f'succeed with {tau} and value {preval}')
         return True, []
     if depth == 0:
-        #print(f'failed with {tau} and value {preval}')
         return False, []
 
     """We prefer edges that reduce the constraint-satisfaction value most."""
@@ -202,19 +202,31 @@ def dfs(depth,tau,constraints,AG):
     for edge in Candidates[0:min(5, len(Candidates))]:
         if is_relevant(edge, tau, constraints):
             newtau = swap(edge, tau, AG)
-            success, action = dfs(depth-1,newtau,constraints,AG)
+            success, action = dfs(depth - 1, newtau, constraints, AG, deadline)
             if success:
-                return success, [edge] + action 
+                return success, [edge] + action
     return False, []
 
-def iterative_dfs(tau,constraints,AG):
-    depth = 2*nx.diameter(AG)
+
+def iterative_dfs(tau, constraints, AG, max_seconds=None):
+    """Iterative-deepening DFS over swap edges up to 2*diameter(AG).
+
+    If ``max_seconds`` is set, abort early and return None when the wall clock
+    is exceeded — checked between depth iterations and inside the recursive
+    dfs. This lets callers fall back to another router without losing the
+    whole circuit.
+    """
+    deadline = time.monotonic() + max_seconds if max_seconds is not None else None
+    depth = 2 * nx.diameter(AG)
     for d in range(depth):
-        success, action = dfs(d,tau,constraints,AG)
+        if deadline is not None and time.monotonic() > deadline:
+            print(f"iterative_dfs: time budget {max_seconds}s exceeded at depth {d}")
+            return None
+        success, action = dfs(d, tau, constraints, AG, deadline)
         print(f"test {d, success}")
         if success:
             return action
-    print(f'failed after {depth} iterative calls of bfs')
+    print(f'failed after {depth} iterative calls of dfs')
     return None
 
 
