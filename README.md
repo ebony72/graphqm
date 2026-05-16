@@ -36,6 +36,18 @@ pip install -r requirements.txt
 
 Benchmarks default to `../bench/qiskit_circuit_benchmark/`. Override with `export GRAPHQM_BENCH=/path/to/qasm/` and `from config import BENCH_PATH` in new code (older notebooks still have the path hardcoded).
 
+## Tests
+
+Pure-Python smoke tests (no Qiskit) cover `ag.py` and `vfsexp.py`:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/
+```
+
+CI (`.github/workflows/ci.yml`) runs these on every push and PR plus a
+`python -m compileall` syntax check across all modules.
+
 ## Dependencies
 
 Pinned to Qiskit 0.33; some files use private APIs (`Qubit._index`, `DAGOpNode` constructor) that may break on newer versions.

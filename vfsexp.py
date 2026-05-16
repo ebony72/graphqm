@@ -104,12 +104,12 @@ class Vf:
             
         if self.is_complete():
 
-            if self.upperbound and self.mapdist() >= self.upperbound:
+            if self.upperbound is not None and self.mapdist() >= self.upperbound:
                     return S
 
             self.upperbound = self.mapdist()
             S = copy.copy(self.curMap)
-            
+
             return S
 
         if time.time() - self.start > self.stop: 
@@ -129,7 +129,7 @@ class Vf:
 
                 self.curMap[nxt_vtx] = u
                 
-                if self.upperbound and self.preMap and self.mapdist() >= self.upperbound:
+                if self.upperbound is not None and self.preMap and self.mapdist() >= self.upperbound:
                     self.curMap.pop(nxt_vtx)
                     continue
                     

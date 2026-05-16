@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: pytest (ag + vfsexp)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install runtime deps (networkx) + dev deps (pytest)
+        run: |
+          pip install --upgrade pip
+          pip install networkx>=2.6
+          pip install -r requirements-dev.txt
+      - name: Run pytest
+        run: pytest tests/ -v
+
+  syntax:
+    name: Syntax-check Qiskit-dependent modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Compile all Python files
+        run: python -m compileall -q .
