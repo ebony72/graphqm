@@ -95,8 +95,8 @@ def fast_no_embedding(subgraph, graph):
     
     subgraph_deg = list(nx.degree(subgraph, v) for v in subgraph.nodes())
     subgraph_deg.sort(reverse=True)
-    
-    graph_deg = list(nx.degree(subgraph, v) for v in subgraph.nodes())
+
+    graph_deg = list(nx.degree(graph, v) for v in graph.nodes())
     graph_deg.sort(reverse=True)
     
     l = len(subgraph_deg)

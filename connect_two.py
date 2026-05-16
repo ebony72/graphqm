@@ -246,7 +246,7 @@ if __name__=='__main__':
 
     print(f'The generated action is {action}')
 
-    bfs_action = bfs(3,tau,constraints,AG)
-    print(bfs_action)
-    ibfs_action = iterative_bfs(tau,constraints,AG)
-    print(ibfs_action)
+    dfs_success, dfs_action = dfs(3,tau,constraints,AG)
+    print(dfs_success, dfs_action)
+    idfs_action = iterative_dfs(tau,constraints,AG)
+    print(idfs_action)

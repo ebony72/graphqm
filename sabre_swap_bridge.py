@@ -17,7 +17,7 @@ from collections import defaultdict
 from copy import copy, deepcopy
 import numpy as np
 
-from qiskit.circuit.library.standard_gates import SwapGate
+from qiskit.circuit.library.standard_gates import SwapGate, CXGate
 from qiskit.circuit.quantumregister import Qubit
 from qiskit.transpiler.basepasses import TransformationPass
 from qiskit.transpiler.exceptions import TranspilerError
@@ -168,7 +168,8 @@ class SabreSwap(TransformationPass):
         # Start algorithm from the front layer and iterate until all gates done.
         front_layer = dag.front_layer()
         self.applied_predecessors = defaultdict(int)
-        bridge_swap_used = 0 #sl: count how many bridge gates are used
+        bridge_count = 0  # number of bridge gates inserted
+        swap_count = 0    # number of SWAP gates inserted
         for _, input_node in dag.input_map.items():
             for successor in self._successors(input_node, dag):
                 self.applied_predecessors[successor] += 1
@@ -247,10 +248,9 @@ class SabreSwap(TransformationPass):
                 """Using bridge does not improve the result"""
                 if prescore-best_score <= best_bridge_score:
                     best_bridge = rng.choice(best_bridges)
-                    #TODO: apply bridge gate
-                    #self.apply_bridge_gate(mapped_dag, best_bridge,current_layout, canonical_register)
+                    self._apply_bridge_gate(mapped_dag, best_bridge, current_layout, canonical_register)
                     front_layer.remove(best_bridge)
-                    bridge_swap_used += 1
+                    bridge_count += 1
                     for successor in self._successors(best_bridge, dag):
                         self.applied_predecessors[successor] += 1
                         if self._is_resolved(successor):
@@ -267,12 +267,14 @@ class SabreSwap(TransformationPass):
             swap_node = DAGOpNode(op=SwapGate(), qargs=best_swap)
             self._apply_gate(mapped_dag, swap_node, current_layout, canonical_register)
             current_layout.swap(*best_swap)
-            
-            bridge_swap_used +=1 #sl
-            
+
+            swap_count += 1
+
         self.property_set["final_layout"] = current_layout
-        
-        print(f"The total CNOT overhead is {bridge_swap_used*3}.") #sl
+
+        # SWAP = 3 CNOTs; bridge replaces 1 CX with 4 CNOTs => +3 CNOTs per bridge
+        cnot_overhead = swap_count * 3 + bridge_count * 3
+        print(f"swaps={swap_count}, bridges={bridge_count}, CNOT overhead={cnot_overhead}")
         if not self.fake_run:
             return mapped_dag
         return dag
@@ -283,19 +285,38 @@ class SabreSwap(TransformationPass):
         new_node = _transform_gate_for_layout(node, current_layout, canonical_register)
         mapped_dag.apply_operation_back(new_node.op, new_node.qargs, new_node.cargs)
     
-    #TODO: apply 4 cnot gates and remove the original node
     def _apply_bridge_gate(self, mapped_dag, bridge_gate, current_layout, canonical_register):
+        """Decompose a distance-2 CX(a,c) into 4 nearest-neighbor CXs.
+
+        For physical qubits p_a -- p_b -- p_c (a path of length 2 in the
+        coupling map), emit CX(a,b), CX(b,c), CX(a,b), CX(b,c). The action on
+        basis states is identical to CX(a,c). Layout is unchanged.
+        """
         if self.fake_run:
             return
-                
-        #u,v = current_layout[bridge_gate.qargs[0]], current_layout[bridge_gate.qargs[1]]
-        #shortest_path = nx.shortest_path(self.coupling_map, u, v)
-        #if len(shortest_path) != 2:
-        #    raise Exception (f"only distance 2 allowed in a bridge gate {bridge_gate}")
+        if bridge_gate.op.name != 'cx':
+            raise TranspilerError(
+                f"Bridge decomposition only defined for CX, got {bridge_gate.op.name}"
+            )
 
-        #self.coupling_map
-        #new_node = _transform_gate_for_layout(node, current_layout, canonical_register)
-        #mapped_dag.apply_operation_back(new_node.op, new_node.qargs, new_node.cargs)        
+        v_a, v_c = bridge_gate.qargs
+        p_a = current_layout._v2p[v_a]
+        p_c = current_layout._v2p[v_c]
+
+        common = set(self.coupling_map.neighbors(p_a)) & set(self.coupling_map.neighbors(p_c))
+        if not common:
+            raise TranspilerError(
+                f"Bridge requires distance 2: physical qubits {p_a}, {p_c} share no neighbor"
+            )
+        p_b = min(common)
+
+        p2v = {p: v for v, p in current_layout._v2p.items()}
+        v_b = p2v[p_b]
+
+        cx = CXGate()
+        for q1, q2 in ((v_a, v_b), (v_b, v_c), (v_a, v_b), (v_b, v_c)):
+            node = DAGOpNode(op=cx, qargs=[q1, q2])
+            self._apply_gate(mapped_dag, node, current_layout, canonical_register)
 
 
     def _successors(self, node, dag):

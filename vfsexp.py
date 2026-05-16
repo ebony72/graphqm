@@ -244,8 +244,7 @@ class Vf:
             X = list(set(self._sub_nodes) - set(self.curMap.keys()))
             
             subg_temp = self.subgraph.subgraph(X)
-            # X = max(nx.connected_components(subg_temp), key=len)
-            X = min(nx.connected_components(subg_temp), key=len) #sl@230531
+            X = max(nx.connected_components(subg_temp), key=len)
             
             gNMNeighbor = list(set(self._graph_nodes) - set(self.curMap.values()))
 

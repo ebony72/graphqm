@@ -33,10 +33,10 @@ def q20():
         g.add_edge(i+4,i)
     return g
 
-# IBM Q Tokyo (Q20) 
+# m x n grid coupling graph (column-major indexing: node = j*m + i)
 def qgrid(m,n):
     g = nx.Graph()
-    g.add_nodes_from(list(range(0,m*n-1)))
+    g.add_nodes_from(range(m*n))
     for i in range(0,m):
         for j in range(0,n):
             if i < m-1: g.add_edge(j*m+i, j*m+i+1)

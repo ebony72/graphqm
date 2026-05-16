@@ -88,7 +88,6 @@ class SabreLayout(AnalysisPass):
         if self.seed is None:
             self.seed = np.random.randint(0, np.iinfo(np.int32).max)
         rng = np.random.default_rng(self.seed)
-        self.seed = None #zc
 
         physical_qubits = rng.choice(self.coupling_map.size(), len(dag.qubits), replace=False)
         physical_qubits = rng.permutation(physical_qubits)
