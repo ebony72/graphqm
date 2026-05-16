@@ -53,6 +53,18 @@ pytest tests/
 CI (`.github/workflows/ci.yml`) runs these on every push and PR plus a
 `python -m compileall` syntax check across all modules.
 
+## Compare with SABRE
+
+[`scripts/compare.py`](scripts/compare.py) runs the graphqm pipeline
+(partition + `connect_two` routing) and Qiskit's upstream SABRE
+side-by-side on a fixed benchmark suite over the q20 (IBM Tokyo) coupling,
+reporting SWAP counts for each. Requires Qiskit 0.33 (graphqm uses
+private APIs that disappeared in newer Qiskit).
+
+```bash
+python scripts/compare.py
+```
+
 ## Dependencies
 
 Pinned to Qiskit 0.33; some files use private APIs (`Qubit._index`, `DAGOpNode` constructor) that may break on newer versions.
