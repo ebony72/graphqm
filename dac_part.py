@@ -24,8 +24,9 @@ def remove_1q_and_consecutive_2q_gates_in_circuit(circuit):
             p, q = instruction.qubits[0]._index, instruction.qubits[1]._index
             qubit_set = qubit_set | {p,q}
     
-    newcirc = QuantumCircuit(len(qubit_set))
-    #newcirc = QuantumCircuit(circuit.num_qubits)
+    # Use the full qubit count: cx(p, q) below uses the original qubit indices,
+    # so the new circuit must be wide enough to hold any index that appears.
+    newcirc = QuantumCircuit(circuit.num_qubits)
     record = [] #the current end layer of the reduced circuit
     for instruction in circuit:
         if len(instruction.qubits) != 2: continue

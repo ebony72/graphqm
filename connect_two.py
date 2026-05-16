@@ -193,11 +193,13 @@ def dfs(depth,tau,constraints,AG):
         #print(f'failed with {tau} and value {preval}')
         return False, []
 
-    """We prefer edges reduces the value most!"""
+    """We prefer edges that reduce the constraint-satisfaction value most."""
     sorted_list = rank_local_actions(tau, constraints, AG)
     Candidates = [item[1] for item in sorted_list]
-    for edge in Candidates[0:max(5,len(Candidates))]: 
-    #for edge in Candidates: 
+    # Cap branching to the top-5 sorted candidates. The previous form
+    # `Candidates[0:max(5, len(Candidates))]` slices to `max(5, len)` which is
+    # always `len` once len >= 5 — i.e. it never actually capped anything.
+    for edge in Candidates[0:min(5, len(Candidates))]:
         if is_relevant(edge, tau, constraints):
             newtau = swap(edge, tau, AG)
             success, action = dfs(depth-1,newtau,constraints,AG)

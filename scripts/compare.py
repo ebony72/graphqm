@@ -23,10 +23,22 @@ Usage:
 
 import copy
 import os
+import signal
 import sys
 
 # Make repo-root modules importable regardless of cwd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+CIRCUIT_TIMEOUT_S = 300  # per-circuit wall clock for run_graphqm; 0 disables
+
+
+class CircuitTimeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise CircuitTimeout()
 
 import networkx as nx
 from qiskit import QuantumCircuit
@@ -38,9 +50,11 @@ from qiskit.transpiler.passes.layout.apply_layout import ApplyLayout
 from qiskit.transpiler.passes.layout.enlarge_with_ancilla import EnlargeWithAncilla
 from qiskit.transpiler.passes.layout.full_ancilla_allocation import FullAncillaAllocation
 
+from qiskit.transpiler.passes.routing.algorithms.token_swapper import ApproximateTokenSwapper
+
 import ag
 from config import BENCH_PATH
-from connect_two import iterative_dfs
+from connect_two import get_rxgraph, iterative_dfs
 from connect_two import swap as connect_two_swap
 from dac_part import (
     graph_of_circuit,
@@ -122,11 +136,55 @@ def _map_completion_all(tau, dag, AG):
     return tau
 
 
-def run_graphqm(qc, AG):
-    """Partition + connect_two routing. Returns (swap_count, num_sections).
+def _ats_fallback_route(cur_map, sec_graph, AG):
+    """Route a section transition via ApproximateTokenSwapper when iterative_dfs fails.
 
-    Deterministic given the inputs (no randomness in partition / iterative_dfs /
-    map_completion_all), so no seed parameter is needed.
+    Finds any valid embedding of the section's interaction graph and uses ATS to
+    compute the SWAP sequence taking cur_map to that target. Returns
+    ``(swap_count, new_cur_map)``.
+    """
+    ok, target_map = is_embeddable(sec_graph, AG, 30)
+    if not ok:
+        raise RuntimeError("section IG not embeddable into AG")
+
+    # Build a full permutation over AG nodes from cur_map to target_map
+    permutation = {}
+    src_positions, dst_positions = set(), set()
+    for t in target_map:
+        if t not in cur_map:
+            continue
+        p_curr, p_target = cur_map[t], target_map[t]
+        permutation[p_curr] = p_target
+        src_positions.add(p_curr)
+        dst_positions.add(p_target)
+    free_src = [n for n in AG.nodes() if n not in src_positions]
+    free_dst = [n for n in AG.nodes() if n not in dst_positions]
+    for s, d in zip(free_src, free_dst):
+        permutation[s] = d
+
+    rxAG = get_rxgraph(AG)
+    swap_list = ApproximateTokenSwapper(rxAG).map(permutation)
+
+    # Walk the swap sequence to update cur_map
+    new_cur_map = copy.copy(cur_map)
+    inv = {v: k for k, v in new_cur_map.items()}
+    for u, v in swap_list:
+        tu, tv = inv.get(u), inv.get(v)
+        if tu is not None:
+            new_cur_map[tu] = v
+        if tv is not None:
+            new_cur_map[tv] = u
+        inv = {val: key for key, val in new_cur_map.items()}
+
+    return len(swap_list), new_cur_map
+
+
+def run_graphqm(qc, AG, use_ats_fallback=True):
+    """Partition + connect_two routing. Returns ``(swap_count, (parts, fallbacks))``.
+
+    Deterministic given the inputs. When ``use_ats_fallback`` is True (default),
+    a transition that iterative_dfs can't solve falls back to
+    ApproximateTokenSwapper so every circuit produces a result.
     """
     newcirc = remove_1q_and_consecutive_2q_gates_in_circuit(qc)
     tokenset = set(q._index for q in newcirc.qubits)
@@ -135,7 +193,7 @@ def run_graphqm(qc, AG):
     sections = partition(dag, AG, method="greedy")
     num_sections = len(sections)
     if num_sections == 1:
-        return 0, 1
+        return 0, (1, 0)
 
     cur_graph = graph_of_circuit(dag_to_circuit(sections[0]))
     ok, inimap = is_embeddable(cur_graph, AG, 10)
@@ -149,6 +207,7 @@ def run_graphqm(qc, AG):
 
     map_id = {v: v for v in AG.nodes()}
     total_swaps = 0
+    fallback_count = 0
     for i in range(1, num_sections):
         sec_graph = graph_of_circuit(dag_to_circuit(sections[i]))
         constraints = [
@@ -158,12 +217,17 @@ def run_graphqm(qc, AG):
         ]
         action = iterative_dfs(map_id, constraints, AG)
         if action is None:
-            raise RuntimeError(f"routing failed at section transition {i}")
+            if not use_ats_fallback:
+                raise RuntimeError(f"routing failed at section transition {i}")
+            n_swaps, cur_map = _ats_fallback_route(cur_map, sec_graph, AG)
+            total_swaps += n_swaps
+            fallback_count += 1
+            continue
         total_swaps += len(action)
         for edge in action:
             cur_map = connect_two_swap(edge, cur_map, AG)
 
-    return total_swaps, num_sections
+    return total_swaps, (num_sections, fallback_count)
 
 
 def main():
@@ -194,11 +258,20 @@ def main():
 
         sabre_sw = min(run_sabre(qc, cm, s) for s in SABRE_SEEDS)
 
+        if CIRCUIT_TIMEOUT_S > 0:
+            signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.alarm(CIRCUIT_TIMEOUT_S)
         try:
-            gqm_sw, gqm_parts = run_graphqm(qc, AG)
-            gqm_disp, parts_disp, note = str(gqm_sw), str(gqm_parts), ""
+            gqm_sw, (gqm_parts, gqm_fb) = run_graphqm(qc, AG)
+            note = f"{gqm_fb} ATS fallback(s)" if gqm_fb else ""
+            gqm_disp, parts_disp = str(gqm_sw), str(gqm_parts)
+        except CircuitTimeout:
+            gqm_disp, parts_disp, note = "—", "—", f"TIMEOUT ({CIRCUIT_TIMEOUT_S}s)"
         except Exception as e:
             gqm_disp, parts_disp, note = "—", "—", f"FAIL: {type(e).__name__}: {e}"
+        finally:
+            if CIRCUIT_TIMEOUT_S > 0:
+                signal.alarm(0)
 
         print(
             f"{fn:<32}{qc.num_qubits:>8}{cx_in:>8}{sabre_sw:>8}"
