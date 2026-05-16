@@ -26,7 +26,12 @@ Sibling work to [FiDLS](https://github.com/ebony72/FiDLS) and [quekno](https://g
 
 ## Notebooks
 
-Experiment drivers — e.g. `dac_router_*.ipynb`, `lisabre_run.ipynb`, `graph_profile.ipynb`, `sabre_example_2310.ipynb`.
+- [`dac_router_all.ipynb`](dac_router_all.ipynb) — canonical end-to-end demo: partition → connect_two routing.
+- [`notebooks/archive/`](notebooks/archive/) — earlier experiments (SABRE bench, bridges, graph profiling, token swap, Grover/initial-mapping scratches). Archived as-is; to run from their new location, prepend the repo root to `sys.path`:
+
+  ```python
+  import sys; sys.path.insert(0, "../..")
+  ```
 
 ## Setup
 
