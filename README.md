@@ -20,9 +20,9 @@ Sibling work to [FiDLS](https://github.com/ebony72/FiDLS) and [quekno](https://g
 | `vfsexp.py` | VF2-style subgraph isomorphism: `dfsMatch` / `dfsMatchBest` / `dfsMatchAll` |
 | `dac_part.py` | Divide-and-conquer DAG partitioning into AG-embeddable sections; cutting points |
 | `connect_two.py` | Token-swap routing between sub-mappings via constraint satisfaction |
-| `sabre_swap0330.py` | Qiskit-0.33 SABRE swap baseline |
-| `sabre_swap_bridge.py`, `sabre_swap_bridge2.py` | SABRE augmented with bridge-gate insertion (experimental) |
-| `SabreLayout0330.py` | Forward-backward SabreLayout |
+| `sabre_swap.py` | SABRE swap pass; heuristic in `{basic, lookahead, decay}`; bridge gates via `use_bridge=True` |
+| `sabre_layout.py` | Forward-backward SabreLayout |
+| `config.py` | Benchmark path config (override via `GRAPHQM_BENCH` env var) |
 
 ## Notebooks
 
@@ -34,7 +34,7 @@ Experiment drivers — e.g. `dac_router_*.ipynb`, `lisabre_run.ipynb`, `graph_pr
 pip install -r requirements.txt
 ```
 
-Benchmarks are read from `../bench/qiskit_circuit_benchmark/` (path is hardcoded in notebooks).
+Benchmarks default to `../bench/qiskit_circuit_benchmark/`. Override with `export GRAPHQM_BENCH=/path/to/qasm/` and `from config import BENCH_PATH` in new code (older notebooks still have the path hardcoded).
 
 ## Dependencies
 

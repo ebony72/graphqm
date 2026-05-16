@@ -1,40 +1,27 @@
-#qiskit=0.33.0
+# Derived from Qiskit (Apache License 2.0, IBM 2017-2020).
+"""Layout selection via SABRE bidirectional search (Li et al., ASPLOS 2019).
 
-# This code is part of Qiskit.
-#
-# (C) Copyright IBM 2017, 2020.
-#
-# This code is licensed under the Apache License, Version 2.0. You may
-# obtain a copy of this license in the LICENSE.txt file in the root directory
-# of this source tree or at http://www.apache.org/licenses/LICENSE-2.0.
-#
-# Any modifications or derivative works of this code must retain this
-# copyright notice, and modified files need to carry a notice indicating
-# that they have been altered from the originals.
-
-"""Layout selection using the SABRE bidirectional search approach from Li et al.
+By default the iterative routing is delegated to Qiskit's upstream SabreSwap.
+Pass a different ``routing_pass`` (e.g. the local ``sabre_swap.SabreSwap``
+with ``use_bridge=True``) to swap in alternative routers.
 """
 
 import logging
+
 import numpy as np
 
 from qiskit.converters import dag_to_circuit
-from qiskit.transpiler.passes.layout.set_layout import SetLayout
-from qiskit.transpiler.passes.layout.full_ancilla_allocation import FullAncillaAllocation
-from qiskit.transpiler.passes.layout.enlarge_with_ancilla import EnlargeWithAncilla
-from qiskit.transpiler.passes.layout.apply_layout import ApplyLayout
-from qiskit.transpiler.passmanager import PassManager
-from qiskit.transpiler.layout import Layout
 from qiskit.transpiler.basepasses import AnalysisPass
 from qiskit.transpiler.exceptions import TranspilerError
-
+from qiskit.transpiler.layout import Layout
+from qiskit.transpiler.passes.layout.apply_layout import ApplyLayout
+from qiskit.transpiler.passes.layout.enlarge_with_ancilla import EnlargeWithAncilla
+from qiskit.transpiler.passes.layout.full_ancilla_allocation import FullAncillaAllocation
+from qiskit.transpiler.passes.layout.set_layout import SetLayout
 from qiskit.transpiler.passes.routing import SabreSwap
-# from sabre0330.sabre_swap import SabreSwap
-# from swaptest import SabreSwap
+from qiskit.transpiler.passmanager import PassManager
 
 logger = logging.getLogger(__name__)
-
-print('sabrelayout0330')
 
 
 class SabreLayout(AnalysisPass):
@@ -83,15 +70,12 @@ class SabreLayout(AnalysisPass):
         if len(dag.qubits) > self.coupling_map.size():
             raise TranspilerError("More virtual qubits exist than physical.")
 
-        # print('sabre layout0330')
-        # Choose a random initial_layout.
         if self.seed is None:
             self.seed = np.random.randint(0, np.iinfo(np.int32).max)
         rng = np.random.default_rng(self.seed)
 
         physical_qubits = rng.choice(self.coupling_map.size(), len(dag.qubits), replace=False)
         physical_qubits = rng.permutation(physical_qubits)
-        # print(f'physical qubits: {physical_qubits}')
         initial_layout = Layout({q: dag.qubits[i] for i, q in enumerate(physical_qubits)})
 
         if self.routing_pass is None:
@@ -121,10 +105,8 @@ class SabreLayout(AnalysisPass):
 
         for qreg in dag.qregs.values():
             initial_layout.add_register(qreg)
-        
-        # print('sabre0330testxxx')
+
         self.property_set["layout"] = initial_layout
-        # print(initial_layout)
         self.routing_pass.fake_run = False
 
     def _layout_and_route_passmanager(self, initial_layout):
